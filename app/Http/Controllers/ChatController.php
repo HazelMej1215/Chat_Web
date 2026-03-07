@@ -6,17 +6,23 @@ use App\Models\Message;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Http;
 
 class ChatController extends Controller
 {
-    // Muestra el panel principal del chat
     public function index()
     {
         $users = User::where('id', '!=', Auth::id())->get();
         return view('chat.index', compact('users'));
     }
 
-    // Muestra la conversación con un usuario específico
+    public function showAi()
+    {
+        $users = User::where('id', '!=', Auth::id())->get();
+        $isAiChat = true;
+        return view('chat.index', compact('users', 'isAiChat'));
+    }
+
     public function show($userId)
     {
         $authId = Auth::id();
@@ -28,7 +34,6 @@ class ChatController extends Controller
             $q->where('sender_id', $userId)->where('receiver_id', $authId);
         })->orderBy('created_at', 'asc')->get();
 
-        // Marcar mensajes como leídos
         Message::where('sender_id', $userId)
             ->where('receiver_id', $authId)
             ->where('is_read', false)
@@ -39,7 +44,6 @@ class ChatController extends Controller
         return view('chat.index', compact('users', 'receiver', 'messages'));
     }
 
-    // Envía un mensaje
     public function send(Request $request)
     {
         $request->validate([
@@ -61,7 +65,6 @@ class ChatController extends Controller
         ]);
     }
 
-    // Polling: obtener nuevos mensajes
     public function fetch(Request $request)
     {
         $request->validate([
@@ -69,9 +72,9 @@ class ChatController extends Controller
             'last_id'   => 'nullable|integer',
         ]);
 
-        $authId = Auth::id();
+        $authId   = Auth::id();
         $withUser = $request->with_user;
-        $lastId = $request->last_id ?? 0;
+        $lastId   = $request->last_id ?? 0;
 
         $messages = Message::where('id', '>', $lastId)
             ->where(function ($q) use ($authId, $withUser) {
@@ -91,7 +94,6 @@ class ChatController extends Controller
         return response()->json($messages);
     }
 
-    // Contador de no leídos por usuario (para sidebar)
     public function unread()
     {
         $authId = Auth::id();
@@ -102,5 +104,34 @@ class ChatController extends Controller
             ->pluck('total', 'sender_id');
 
         return response()->json($counts);
+    }
+
+    public function aiChat(Request $request)
+    {
+        $request->validate([
+            'message' => 'required|string|max:2000',
+        ]);
+
+        $accountId = 'b12a6c64f45d3991ecd96ab0040496bd';
+        $token     = 'cL8MTadHrSnVtDhIlubMWbnOIiSxUgYh6ejEQPSv';
+
+        $response = Http::withHeaders([
+            'Authorization' => 'Bearer ' . $token,
+            'Content-Type'  => 'application/json',
+        ])->post("https://api.cloudflare.com/client/v4/accounts/{$accountId}/ai/run/@cf/meta/llama-3-8b-instruct", [
+            'messages' => [
+                ['role' => 'system', 'content' => 'Eres un asistente amigable dentro de una app de chat llamada ChatApp Gamboa. Responde siempre en español.'],
+                ['role' => 'user',   'content' => $request->message],
+            ],
+        ]);
+
+        if ($response->successful()) {
+            $reply = $response->json('result.response');
+            return response()->json(['reply' => $reply]);
+        }
+
+        return response()->json([
+            'reply' => 'Error ' . $response->status() . ': ' . $response->body()
+        ], 500);
     }
 }

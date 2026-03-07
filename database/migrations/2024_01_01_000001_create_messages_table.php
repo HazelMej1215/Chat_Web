@@ -12,7 +12,8 @@ return new class extends Migration
             $table->id();
             $table->foreignId('sender_id')->constrained('users')->onDelete('cascade');
             $table->foreignId('receiver_id')->constrained('users')->onDelete('cascade');
-            $table->text('content'); // Contenido cifrado E2E (AES-256)
+            $table->text('content');
+            $table->string('iv')->nullable();
             $table->boolean('is_read')->default(false);
             $table->timestamps();
         });
